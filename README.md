@@ -193,6 +193,14 @@ Post a message into a channel.
 
 Add a reaction to a post.
 
+### unreact-to-post
+
+Remove your reaction from a post.
+
+### edit-post
+
+Edit an existing post's content.
+
 ### delete-post
 
 Delete a post by ID.
@@ -208,6 +216,10 @@ Get unread counts by channel.
 ### get-profile
 
 Fetch a ship profile.
+
+### get-my-profile
+
+Get your own profile information.
 
 ### update-profile
 
