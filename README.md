@@ -11,6 +11,10 @@ https://github.com/user-attachments/assets/765847b2-df40-44c0-bfd3-c23eb609bbd8
 - **send-dm tool**: Send direct messages to other users by ship ID or nickname
 - **read-dm-history tool**: Retrieve recent messages from a direct-message channel
 - **list-contacts tool**: Get contacts with their nicknames and ship IDs
+- **groups & channels**: List groups, channels, members, and read channel history
+- **posting & reactions**: Send channel messages, react to posts, delete posts
+- **activity**: Fetch mentions/replies and unread counts
+- **profiles**: Get and update contact profiles
 - **Natural language support**: Reference people by their nicknames ("Send a message to Brian")
 
 ## Prerequisites
@@ -36,6 +40,7 @@ Configure the server using environment variables:
 
 | Variable        | Description                      | Default                     |
 | --------------- | -------------------------------- | --------------------------- |
+| `URBIT_URL`     | Full Urbit URL (preferred)       | —                           |
 | `URBIT_SHIP`    | Your Urbit ship name (without ~) | zod                         |
 | `URBIT_CODE`    | Your Urbit +code                 | lidlut-tabwed-pillex-ridrup |
 | `URBIT_HOST`    | Urbit host                       | localhost                   |
@@ -143,6 +148,70 @@ Example usage:
 ```
 List all my contacts
 ```
+
+### list-groups
+
+Lists groups you belong to.
+
+### get-group-info
+
+Get detailed info for a group.
+
+### list-group-members
+
+List group members and roles.
+
+### invite-to-group
+
+Invite ships to a group.
+
+### assign-role
+
+Assign a role to a group member.
+
+### remove-role
+
+Remove a role from a group member.
+
+### list-channels
+
+List all channels in a group.
+
+### get-channel-info
+
+Get metadata about a channel.
+
+### read-channel-history
+
+Fetch recent posts from a channel (raw or formatted).
+
+### send-to-channel
+
+Post a message into a channel.
+
+### react-to-post
+
+Add a reaction to a post.
+
+### delete-post
+
+Delete a post by ID.
+
+### get-activity
+
+Fetch recent activity items (all, mentions, replies).
+
+### get-unreads
+
+Get unread counts by channel.
+
+### get-profile
+
+Fetch a ship profile.
+
+### update-profile
+
+Update your profile fields (nickname, bio, status, avatar, cover).
 
 ## License
 

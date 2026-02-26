@@ -2,18 +2,42 @@ import { Urbit } from "@urbit/http-api";
 import { unixToDa, formatUd } from "@urbit/aura";
 import { FastMCP } from "fastmcp";
 import z from "zod";
+import {
+  initUrbitGlobals,
+  patchUrbitConnect,
+  getConfig,
+  ensureConnected,
+} from "./lib/connection.js";
+import {
+  createErrorResponse,
+  createJsonResponse,
+  formatChannelHistory,
+} from "./lib/utils.js";
+import {
+  getContacts,
+  formatContacts,
+  getProfile,
+  updateProfile,
+} from "./lib/contacts.js";
+import {
+  listGroups,
+  getGroupInfo,
+  listGroupMembers,
+  listGroupChannels,
+  inviteToGroup,
+  assignRole,
+  removeRole,
+} from "./lib/groups.js";
+import {
+  getChannelInfo,
+  readChannelHistory,
+  sendToChannel,
+} from "./lib/channels.js";
+import { reactToPost, deletePost } from "./lib/posts.js";
+import { getActivity, getUnreads } from "./lib/activity.js";
 
-// Polyfill minimal browser globals needed by @urbit/http-api in Node
-if (typeof global.window === "undefined") {
-  global.window = { fetch: global.fetch };
-}
-if (typeof global.document === "undefined") {
-  global.document = {
-    hidden: true,
-    addEventListener() {},
-    removeEventListener() {},
-  };
-}
+initUrbitGlobals();
+patchUrbitConnect();
 
 // Redirect console.log to stderr in stdio mode to avoid interfering with MCP protocol
 // Only use normal console.log if explicitly in HTTP mode
@@ -24,82 +48,6 @@ if (process.env.MCP_TRANSPORT !== "http") {
   };
 }
 
-/**
- * Process environment variables to get configuration
- *
- * @returns {Object} Configuration object with default values
- */
-function getConfig() {
-  // Default configuration
-  const defaults = {
-    ship: "zod", // Local development ship (without ~)
-    code: "lidlut-tabwed-pillex-ridrup", // Default +code
-    host: "http://localhost", // Urbit host
-    port: "8080", // Urbit port (commonly 8080 for local development)
-  };
-
-  // Get configuration from environment or defaults
-  const config = {
-    ship: process.env.URBIT_SHIP || defaults.ship,
-    code: process.env.URBIT_CODE || defaults.code,
-    host: process.env.URBIT_HOST || defaults.host,
-    port: process.env.URBIT_PORT || defaults.port,
-  };
-
-  // Clean up ship name (remove ~ if present)
-  config.ship = config.ship.replace(/^~/, "");
-
-  // Construct the full URL
-  // If host already contains a scheme (http:// or https://), respect it.
-  // Otherwise, infer scheme from port (443 => https, everything else => http).
-  if (/^https?:\/\//.test(config.host)) {
-    // host already includes protocol and possibly port
-    config.url = config.host;
-  } else {
-    const scheme = config.port === "443" ? "https" : "http";
-    config.url = `${scheme}://${config.host}:${config.port}`;
-  }
-
-  return config;
-}
-
-/**
- * Patched connect method for Urbit API
- *
- * This patch extends the default connect method to handle authentication via HTTP.
- * It performs the following steps:
- * 1. Makes a login request to the Urbit ship with the provided password
- * 2. Extracts the authentication cookie from the response
- * 3. Parses the node ID from the cookie if not already set
- * 4. Retrieves the ship name information
- *
- * The original connect method is preserved below and this patched version
- * is used instead when connecting to an Urbit ship.
- */
-
-const { connect } = Urbit.prototype;
-Urbit.prototype.connect = async function patchedConnect() {
-  const resp = await fetch(`${this.url}/~/login`, {
-    method: "POST",
-    body: `password=${this.code}`,
-    credentials: "include",
-  });
-
-  if (resp.status >= 400) {
-    throw new Error("Login failed with status " + resp.status);
-  }
-
-  const cookie = resp.headers.get("set-cookie");
-  if (cookie) {
-    const match = /urbauth-~([\w-]+)/.exec(cookie);
-    if (!this.nodeId && match) {
-      this.nodeId = match[1];
-    }
-    this.cookie = cookie;
-  }
-  await this.getShipName();
-  await this.getOurName();
-};
 
 /**
  * Sends a direct message to another ship
@@ -195,6 +143,7 @@ async function sendDm(api, fromShip, toShip, text) {
 
     return {
       content: [{ type: "text", text: `Error: ${errorMessage}` }],
+      isError: true,
     };
   }
 }
@@ -214,12 +163,7 @@ async function readDmHistory(api, fromShip, toShip, count = 100) {
   const cappedCount = Math.max(1, Math.min(count, 500));
 
   try {
-    try {
-      await api.getOurName();
-    } catch (connErr) {
-      console.error("Connection check failed while reading history:", connErr);
-      await api.connect();
-    }
+    await ensureConnected(api);
 
     const scryPath = `/dm/${toShip}/writs/newest/${cappedCount}/light`;
     console.log(`Scrying chat app path: ${scryPath}`);
@@ -246,71 +190,11 @@ async function readDmHistory(api, fromShip, toShip, count = 100) {
           text: `Error: ${error.message || "Unknown error occurred"}`,
         },
       ],
+      isError: true,
     };
   }
 }
 
-/**
- * Retrieves the full contact list from the %contacts agent.
- *
- * @param {Object} api - The Urbit API instance
- * @returns {Promise<Object>} Raw contacts map returned from the ship
- */
-async function getContacts(api) {
-  try {
-    const contacts = await api.scry({
-      app: "contacts",
-      path: "/all",
-    });
-    return contacts;
-  } catch (error) {
-    console.error("Error fetching contacts:", error);
-    throw new Error(error.message || "Failed to fetch contacts");
-  }
-}
-
-/**
- * Formats contacts data into a more user-friendly structure
- *
- * @param {Object} contacts - Raw contacts data from the contacts agent
- * @returns {Object} Formatted contacts with easier access patterns
- */
-function formatContacts(contacts) {
-  const formatted = {
-    byShip: {},
-    byNickname: {},
-    byEmail: {},
-    byPhone: {},
-  };
-
-  // Process each contact
-  Object.entries(contacts || {}).forEach(([ship, data]) => {
-    if (!data) return; // Skip if data is null or undefined
-
-    const cleanShip = ship.startsWith("~") ? ship : `~${ship}`;
-
-    // Store basic info by ship
-    formatted.byShip[cleanShip] = {
-      ...data,
-      ship: cleanShip,
-    };
-
-    // Create lookup indexes for common fields - check if properties exist first
-    if (data.nickname && typeof data.nickname === "string") {
-      formatted.byNickname[data.nickname.toLowerCase()] = cleanShip;
-    }
-
-    if (data.email && typeof data.email === "string") {
-      formatted.byEmail[data.email.toLowerCase()] = cleanShip;
-    }
-
-    if (data.phone && typeof data.phone === "string") {
-      formatted.byPhone[data.phone] = cleanShip;
-    }
-  });
-
-  return formatted;
-}
 
 /**
  * Formats DM history data into a more readable structure
@@ -477,23 +361,6 @@ async function resolveShipName(api, nameOrShip, ownShipName) {
   }
 }
 
-/**
- * Creates a standard error response for MCP tools
- *
- * @param {Error} error - The error object
- * @returns {Object} Formatted MCP response with error message
- */
-function createErrorResponse(error) {
-  console.error("Error:", error);
-  return {
-    content: [
-      {
-        type: "text",
-        text: `Error: ${error.message || "Unknown error occurred"}`,
-      },
-    ],
-  };
-}
 
 /**
  * Set up and run the MCP server with the send-dm tool
@@ -716,14 +583,363 @@ async function startMcpServer() {
         const responseData =
           params.format === "raw" ? rawContacts : formatContacts(rawContacts);
 
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(responseData, null, 2),
-            },
-          ],
-        };
+        return createJsonResponse(responseData);
+      } catch (error) {
+        return createErrorResponse(error);
+      }
+    },
+  });
+
+  // Groups
+  server.addTool({
+    name: "list-groups",
+    description: "List all groups the user is a member of",
+    parameters: z.object({}).strict(),
+    execute: async () => {
+      try {
+        await ensureConnected(api);
+        const groups = await listGroups(api);
+        return createJsonResponse(groups);
+      } catch (error) {
+        return createErrorResponse(error);
+      }
+    },
+  });
+
+  server.addTool({
+    name: "get-group-info",
+    description: "Get detailed information about a group",
+    parameters: z
+      .object({
+        group: z.string().describe("Group flag (~host/slug)"),
+      })
+      .strict(),
+    execute: async (params) => {
+      try {
+        await ensureConnected(api);
+        const info = await getGroupInfo(api, params.group);
+        return createJsonResponse(info);
+      } catch (error) {
+        return createErrorResponse(error);
+      }
+    },
+  });
+
+  server.addTool({
+    name: "list-group-members",
+    description: "List members of a group with their roles",
+    parameters: z
+      .object({
+        group: z.string().describe("Group flag (~host/slug)"),
+      })
+      .strict(),
+    execute: async (params) => {
+      try {
+        await ensureConnected(api);
+        const members = await listGroupMembers(api, params.group);
+        return createJsonResponse(members);
+      } catch (error) {
+        return createErrorResponse(error);
+      }
+    },
+  });
+
+  server.addTool({
+    name: "invite-to-group",
+    description: "Invite ships to a group",
+    parameters: z
+      .object({
+        group: z.string().describe("Group flag (~host/slug)"),
+        ships: z
+          .array(z.string())
+          .min(1)
+          .describe("Ships to invite (with ~)"),
+      })
+      .strict(),
+    execute: async (params) => {
+      try {
+        await ensureConnected(api);
+        await inviteToGroup(api, params.group, params.ships);
+        return createJsonResponse({ ok: true });
+      } catch (error) {
+        return createErrorResponse(error);
+      }
+    },
+  });
+
+  server.addTool({
+    name: "assign-role",
+    description: "Assign a role to a member in a group",
+    parameters: z
+      .object({
+        group: z.string().describe("Group flag (~host/slug)"),
+        ship: z.string().describe("Ship to assign role to (with ~)"),
+        role: z.string().describe("Role ID to assign"),
+      })
+      .strict(),
+    execute: async (params) => {
+      try {
+        await ensureConnected(api);
+        await assignRole(api, params.group, params.ship, params.role);
+        return createJsonResponse({ ok: true });
+      } catch (error) {
+        return createErrorResponse(error);
+      }
+    },
+  });
+
+  server.addTool({
+    name: "remove-role",
+    description: "Remove a role from a member in a group",
+    parameters: z
+      .object({
+        group: z.string().describe("Group flag (~host/slug)"),
+        ship: z.string().describe("Ship to remove role from (with ~)"),
+        role: z.string().describe("Role ID to remove"),
+      })
+      .strict(),
+    execute: async (params) => {
+      try {
+        await ensureConnected(api);
+        await removeRole(api, params.group, params.ship, params.role);
+        return createJsonResponse({ ok: true });
+      } catch (error) {
+        return createErrorResponse(error);
+      }
+    },
+  });
+
+  // Channels
+  server.addTool({
+    name: "list-channels",
+    description: "List all channels in a group",
+    parameters: z
+      .object({
+        group: z.string().describe("Group flag (~host/slug)"),
+      })
+      .strict(),
+    execute: async (params) => {
+      try {
+        await ensureConnected(api);
+        const channels = await listGroupChannels(api, params.group);
+        return createJsonResponse(channels);
+      } catch (error) {
+        return createErrorResponse(error);
+      }
+    },
+  });
+
+  server.addTool({
+    name: "get-channel-info",
+    description: "Get info about a specific channel",
+    parameters: z
+      .object({
+        channel: z.string().describe("Channel nest (chat/~host/name)"),
+      })
+      .strict(),
+    execute: async (params) => {
+      try {
+        await ensureConnected(api);
+        const info = await getChannelInfo(api, params.channel);
+        return createJsonResponse(info);
+      } catch (error) {
+        return createErrorResponse(error);
+      }
+    },
+  });
+
+  server.addTool({
+    name: "read-channel-history",
+    description: "Read recent messages from a channel",
+    parameters: z
+      .object({
+        channel: z.string().describe("Channel nest (chat/~host/name)"),
+        count: z
+          .number()
+          .int()
+          .positive()
+          .max(100)
+          .default(50)
+          .describe("Number of messages to fetch (default 50)"),
+        format: z
+          .enum(["raw", "formatted"])
+          .default("formatted")
+          .describe("Format: raw or formatted"),
+      })
+      .strict(),
+    execute: async (params) => {
+      try {
+        await ensureConnected(api);
+        const raw = await readChannelHistory(
+          api,
+          params.channel,
+          params.count ?? 50
+        );
+
+        if (params.format === "raw") {
+          return createJsonResponse(raw);
+        }
+
+        const formatted = formatChannelHistory(raw);
+        return createJsonResponse({
+          meta: {
+            channel: params.channel,
+            messageCount: formatted.length,
+          },
+          messages: formatted,
+        });
+      } catch (error) {
+        return createErrorResponse(error);
+      }
+    },
+  });
+
+  server.addTool({
+    name: "send-to-channel",
+    description: "Send a message to a channel",
+    parameters: z
+      .object({
+        channel: z.string().describe("Channel nest (chat/~host/name)"),
+        message: z.string().describe("Message text"),
+      })
+      .strict(),
+    execute: async (params) => {
+      try {
+        await ensureConnected(api);
+        await sendToChannel(api, params.channel, params.message, shipName);
+        return createJsonResponse({ ok: true });
+      } catch (error) {
+        return createErrorResponse(error);
+      }
+    },
+  });
+
+  // Posts and reactions
+  server.addTool({
+    name: "react-to-post",
+    description: "Add a reaction to a post",
+    parameters: z
+      .object({
+        channel: z.string().describe("Channel nest"),
+        postId: z.string().describe("Post ID (@ud format)"),
+        emoji: z.string().describe("Emoji to react with"),
+      })
+      .strict(),
+    execute: async (params) => {
+      try {
+        await ensureConnected(api);
+        await reactToPost(api, params.channel, params.postId, params.emoji, shipName);
+        return createJsonResponse({ ok: true });
+      } catch (error) {
+        return createErrorResponse(error);
+      }
+    },
+  });
+
+  server.addTool({
+    name: "delete-post",
+    description: "Delete a post from a channel",
+    parameters: z
+      .object({
+        channel: z.string().describe("Channel nest"),
+        postId: z.string().describe("Post ID to delete"),
+      })
+      .strict(),
+    execute: async (params) => {
+      try {
+        await ensureConnected(api);
+        await deletePost(api, params.channel, params.postId);
+        return createJsonResponse({ ok: true });
+      } catch (error) {
+        return createErrorResponse(error);
+      }
+    },
+  });
+
+  // Activity
+  server.addTool({
+    name: "get-activity",
+    description: "Get recent activity or notifications",
+    parameters: z
+      .object({
+        type: z.enum(["all", "mentions", "replies"]).default("all"),
+        limit: z.number().int().positive().max(25).default(10),
+      })
+      .strict(),
+    execute: async (params) => {
+      try {
+        await ensureConnected(api);
+        const activity = await getActivity(api, params.type, params.limit);
+        return createJsonResponse(activity);
+      } catch (error) {
+        return createErrorResponse(error);
+      }
+    },
+  });
+
+  server.addTool({
+    name: "get-unreads",
+    description: "Get unread counts per channel",
+    parameters: z.object({}).strict(),
+    execute: async () => {
+      try {
+        await ensureConnected(api);
+        const unreads = await getUnreads(api);
+        return createJsonResponse(unreads);
+      } catch (error) {
+        return createErrorResponse(error);
+      }
+    },
+  });
+
+  // Profiles
+  server.addTool({
+    name: "get-profile",
+    description: "Get a ship's profile",
+    parameters: z
+      .object({
+        ship: z.string().describe("Ship name (with ~)"),
+      })
+      .strict(),
+    execute: async (params) => {
+      try {
+        await ensureConnected(api);
+        const profile = await getProfile(api, params.ship);
+        return createJsonResponse(profile);
+      } catch (error) {
+        return createErrorResponse(error);
+      }
+    },
+  });
+
+  server.addTool({
+    name: "update-profile",
+    description: "Update your own profile",
+    parameters: z
+      .object({
+        nickname: z.string().optional(),
+        bio: z.string().optional(),
+        status: z.string().optional(),
+        avatar: z.string().url().optional(),
+        cover: z.string().url().optional(),
+      })
+      .strict(),
+    execute: async (params) => {
+      try {
+        await ensureConnected(api);
+        const fields = {};
+        if (params.nickname) fields.nickname = params.nickname;
+        if (params.bio) fields.bio = params.bio;
+        if (params.status) fields.status = params.status;
+        if (params.avatar) fields.avatar = params.avatar;
+        if (params.cover) fields.cover = params.cover;
+
+        if (Object.keys(fields).length === 0) {
+          return createErrorResponse(new Error("No profile fields provided"));
+        }
+
+        await updateProfile(api, fields);
+        return createJsonResponse({ ok: true });
       } catch (error) {
         return createErrorResponse(error);
       }
