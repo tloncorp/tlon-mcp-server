@@ -33,7 +33,7 @@ import {
   readChannelHistory,
   sendToChannel,
 } from "./lib/channels.js";
-import { reactToPost, deletePost } from "./lib/posts.js";
+import { reactToPost, unreactToPost, editPost, deletePost } from "./lib/posts.js";
 import { getActivity, getUnreads } from "./lib/activity.js";
 
 initUrbitGlobals();
@@ -837,6 +837,47 @@ async function startMcpServer() {
   });
 
   server.addTool({
+    name: "unreact-to-post",
+    description: "Remove a reaction from a post",
+    parameters: z
+      .object({
+        channel: z.string().describe("Channel nest"),
+        postId: z.string().describe("Post ID (@ud format)"),
+      })
+      .strict(),
+    execute: async (params) => {
+      try {
+        await ensureConnected(api);
+        await unreactToPost(api, params.channel, params.postId, shipName);
+        return createJsonResponse({ ok: true });
+      } catch (error) {
+        return createErrorResponse(error);
+      }
+    },
+  });
+
+  server.addTool({
+    name: "edit-post",
+    description: "Edit an existing post in a channel",
+    parameters: z
+      .object({
+        channel: z.string().describe("Channel nest"),
+        postId: z.string().describe("Post ID to edit (@ud format)"),
+        message: z.string().describe("New message text"),
+      })
+      .strict(),
+    execute: async (params) => {
+      try {
+        await ensureConnected(api);
+        await editPost(api, params.channel, params.postId, params.message, shipName);
+        return createJsonResponse({ ok: true });
+      } catch (error) {
+        return createErrorResponse(error);
+      }
+    },
+  });
+
+  server.addTool({
     name: "delete-post",
     description: "Delete a post from a channel",
     parameters: z
@@ -940,6 +981,21 @@ async function startMcpServer() {
 
         await updateProfile(api, fields);
         return createJsonResponse({ ok: true });
+      } catch (error) {
+        return createErrorResponse(error);
+      }
+    },
+  });
+
+  server.addTool({
+    name: "get-my-profile",
+    description: "Get your own profile information",
+    parameters: z.object({}).strict(),
+    execute: async () => {
+      try {
+        await ensureConnected(api);
+        const profile = await api.scry({ app: "contacts", path: "/self" });
+        return createJsonResponse(profile);
       } catch (error) {
         return createErrorResponse(error);
       }
