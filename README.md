@@ -151,87 +151,276 @@ List all my contacts
 
 ### create-group
 
-Create a new group. Accepts a name, optional title, and optional description.
+Creates a new group owned by your ship.
+
+Parameters:
+
+- `name`: Group name (auto-slugified for the URL)
+- `title` (optional): Display title (defaults to name)
+- `description` (optional): Group description
+
+Example usage:
+
+```
+Create a group called "Weekend Projects"
+```
 
 ### list-groups
 
-Lists groups you belong to.
+Lists all groups you are a member of.
+
+Example usage:
+
+```
+What groups am I in?
+```
 
 ### get-group-info
 
-Get detailed info for a group.
+Get detailed information about a specific group including metadata, channels, and member count.
+
+Parameters:
+
+- `group`: Group flag (e.g., `~sampel-palnet/weekend-projects`)
+
+Example usage:
+
+```
+Tell me about the group ~bolbex-fogdys/my-group
+```
 
 ### list-group-members
 
-List group members and roles.
+List all members of a group with their roles.
+
+Parameters:
+
+- `group`: Group flag (e.g., `~sampel-palnet/weekend-projects`)
+
+Example usage:
+
+```
+Who's in the Weekend Projects group?
+```
 
 ### invite-to-group
 
-Invite ships to a group.
+Invite one or more ships to a group.
+
+Parameters:
+
+- `group`: Group flag (e.g., `~sampel-palnet/weekend-projects`)
+- `ships`: Array of ship names to invite (with ~)
+
+Example usage:
+
+```
+Invite ~zod and ~bus to my Weekend Projects group
+```
 
 ### assign-role
 
-Assign a role to a group member.
+Assign a role to a member in a group.
+
+Parameters:
+
+- `group`: Group flag
+- `ship`: Ship to assign role to (with ~)
+- `role`: Role ID to assign
 
 ### remove-role
 
-Remove a role from a group member.
+Remove a role from a member in a group.
+
+Parameters:
+
+- `group`: Group flag
+- `ship`: Ship to remove role from (with ~)
+- `role`: Role ID to remove
 
 ### create-channel
 
-Create a new channel in a group. Specify the group, type (chat, notebook, or gallery), and name.
+Creates a new channel in an existing group.
+
+Parameters:
+
+- `group`: Group flag (e.g., `~sampel-palnet/weekend-projects`)
+- `type`: Channel type — `chat`, `notebook`, or `gallery`
+- `name`: Channel name (auto-slugified for the URL)
+- `title` (optional): Display title (defaults to name)
+- `description` (optional): Channel description
+
+Example usage:
+
+```
+Create a chat channel called "general" in my Weekend Projects group
+```
+
+```
+Add a notebook called "dev-log" to ~bolbex-fogdys/my-group
+```
+
+```
+Create a gallery channel called "screenshots" in ~sampel-palnet/weekend-projects
+```
 
 ### list-channels
 
 List all channels in a group.
 
+Parameters:
+
+- `group`: Group flag (e.g., `~sampel-palnet/weekend-projects`)
+
+Example usage:
+
+```
+What channels are in the Weekend Projects group?
+```
+
 ### get-channel-info
 
-Get metadata about a channel.
+Get metadata about a specific channel.
+
+Parameters:
+
+- `channel`: Channel nest (e.g., `chat/~sampel-palnet/general`)
 
 ### read-channel-history
 
-Fetch recent posts from a channel (raw or formatted).
+Fetch recent messages from a channel.
+
+Parameters:
+
+- `channel`: Channel nest (e.g., `chat/~sampel-palnet/general`)
+- `count` (optional): Number of messages to fetch (default 50, max 100)
+- `format` (optional): Output format — "raw" or "formatted" (default "formatted")
+
+Example usage:
+
+```
+Show me the last 20 messages in chat/~bolbex-fogdys/general
+```
 
 ### send-to-channel
 
-Post a message into a channel.
+Send a message to a channel.
+
+Parameters:
+
+- `channel`: Channel nest (e.g., `chat/~sampel-palnet/general`)
+- `message`: Message text to send
+
+Example usage:
+
+```
+Send "hello everyone" to chat/~bolbex-fogdys/general
+```
 
 ### react-to-post
 
-Add a reaction to a post.
+Add an emoji reaction to a post.
+
+Parameters:
+
+- `channel`: Channel nest
+- `postId`: Post ID (@ud format with dots)
+- `emoji`: Emoji to react with
 
 ### unreact-to-post
 
 Remove your reaction from a post.
 
+Parameters:
+
+- `channel`: Channel nest
+- `postId`: Post ID (@ud format with dots)
+
 ### edit-post
 
 Edit an existing post's content.
 
+Parameters:
+
+- `channel`: Channel nest
+- `postId`: Post ID to edit (@ud format with dots)
+- `message`: New message text
+
 ### delete-post
 
-Delete a post by ID.
+Delete a post from a channel.
+
+Parameters:
+
+- `channel`: Channel nest
+- `postId`: Post ID to delete
 
 ### get-activity
 
-Fetch recent activity items (all, mentions, replies).
+Fetch recent activity and notifications.
+
+Parameters:
+
+- `type` (optional): Filter by type — "all", "mentions", or "replies" (default "all")
+- `limit` (optional): Number of items (default 10, max 25)
+
+Example usage:
+
+```
+Show me my recent mentions
+```
 
 ### get-unreads
 
-Get unread counts by channel.
+Get unread message counts across all channels.
+
+Example usage:
+
+```
+Do I have any unread messages?
+```
 
 ### get-profile
 
-Fetch a ship profile.
+Fetch another ship's profile information.
+
+Parameters:
+
+- `ship`: Ship name (with ~)
+
+Example usage:
+
+```
+What's ~zod's profile?
+```
 
 ### get-my-profile
 
 Get your own profile information.
 
+Example usage:
+
+```
+Show me my profile
+```
+
 ### update-profile
 
-Update your profile fields (nickname, bio, status, avatar, cover).
+Update your own profile fields.
+
+Parameters:
+
+- `nickname` (optional): Display name
+- `bio` (optional): Bio/description
+- `status` (optional): Status message
+- `avatar` (optional): Avatar image URL
+- `cover` (optional): Cover image URL
+
+Example usage:
+
+```
+Set my nickname to "Captain Urbit"
+```
 
 ## License
 
