@@ -149,6 +149,10 @@ Example usage:
 List all my contacts
 ```
 
+### create-group
+
+Create a new group. Accepts a name, optional title, and optional description.
+
 ### list-groups
 
 Lists groups you belong to.
@@ -172,6 +176,10 @@ Assign a role to a group member.
 ### remove-role
 
 Remove a role from a group member.
+
+### create-channel
+
+Create a new channel in a group. Specify the group, type (chat, notebook, or gallery), and name.
 
 ### list-channels
 

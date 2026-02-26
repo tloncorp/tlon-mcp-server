@@ -27,11 +27,13 @@ import {
   inviteToGroup,
   assignRole,
   removeRole,
+  createGroup,
 } from "./lib/groups.js";
 import {
   getChannelInfo,
   readChannelHistory,
   sendToChannel,
+  createChannel,
 } from "./lib/channels.js";
 import { reactToPost, unreactToPost, editPost, deletePost } from "./lib/posts.js";
 import { getActivity, getUnreads } from "./lib/activity.js";
@@ -709,6 +711,33 @@ async function startMcpServer() {
     },
   });
 
+  server.addTool({
+    name: "create-group",
+    description: "Create a new group",
+    parameters: z
+      .object({
+        name: z.string().describe("Group name (used for slug and title)"),
+        title: z.string().optional().describe("Display title (defaults to name)"),
+        description: z.string().optional().describe("Group description"),
+      })
+      .strict(),
+    execute: async (params) => {
+      try {
+        await ensureConnected(api);
+        const result = await createGroup(
+          api,
+          shipName,
+          params.name,
+          params.title,
+          params.description
+        );
+        return createJsonResponse(result);
+      } catch (error) {
+        return createErrorResponse(error);
+      }
+    },
+  });
+
   // Channels
   server.addTool({
     name: "list-channels",
@@ -788,6 +817,36 @@ async function startMcpServer() {
           },
           messages: formatted,
         });
+      } catch (error) {
+        return createErrorResponse(error);
+      }
+    },
+  });
+
+  server.addTool({
+    name: "create-channel",
+    description: "Create a new channel in a group",
+    parameters: z
+      .object({
+        group: z.string().describe("Group flag (~host/slug)"),
+        type: z.enum(["chat", "notebook", "gallery"]).describe("Channel type"),
+        name: z.string().describe("Channel name (used for slug and title)"),
+        title: z.string().optional().describe("Display title (defaults to name)"),
+        description: z.string().optional().describe("Channel description"),
+      })
+      .strict(),
+    execute: async (params) => {
+      try {
+        await ensureConnected(api);
+        const result = await createChannel(
+          api,
+          params.group,
+          params.type,
+          params.name,
+          params.title,
+          params.description
+        );
+        return createJsonResponse(result);
       } catch (error) {
         return createErrorResponse(error);
       }
